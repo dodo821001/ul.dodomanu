@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827"><title>만화카페 도도 MENU</title>
+<style>
+:root{--bg:#f7f5f0;--card:#fff;--ink:#171717;--muted:#77716a;--line:#e9e4dc;--accent:#1f5a4a}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif}.top{padding:18px 14px 10px;text-align:center}.brand{font-weight:900;font-size:22px;letter-spacing:-.7px}.sub{margin-top:4px;font-size:12px;color:var(--muted)}.sticky{position:sticky;top:0;z-index:30;background:rgba(247,245,240,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}.search-wrap{padding:8px 10px 6px}#search{width:100%;border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-size:14px;outline:none}.categories{display:flex;gap:6px;overflow-x:auto;padding:3px 10px 9px;scrollbar-width:none}.categories::-webkit-scrollbar{display:none}.cat-btn{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 11px;font-size:12px;font-weight:700;color:#4c4945;cursor:pointer}.cat-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}.content{padding:12px 8px 30px;max-width:1180px;margin:0 auto}.section-title{margin:16px 3px 9px;font-size:17px;font-weight:900;letter-spacing:-.4px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.card{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:13px;overflow:hidden;box-shadow:0 2px 8px rgba(20,20,20,.035)}.image-box{aspect-ratio:1/1;width:100%;display:flex;align-items:center;justify-content:center;background:#fff;border-bottom:1px solid #f0ece6;padding:5px}.image-box img{width:100%;height:100%;object-fit:contain;display:block}.placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;text-align:center;color:#aaa39b;font-size:11px;line-height:1.3;background:#faf9f7}.info{padding:8px 7px 9px}.name{font-size:12px;font-weight:800;line-height:1.28;min-height:31px;word-break:keep-all;overflow-wrap:anywhere;letter-spacing:-.3px}.price{margin-top:5px;font-size:13px;font-weight:900;color:var(--accent)}.empty,.loading,.error{text-align:center;color:var(--muted);padding:50px 12px;font-size:14px;line-height:1.6}.error{color:#8a3d35}.footer{padding:18px 10px 35px;text-align:center;color:#99928a;font-size:11px}@media(min-width:600px){.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.content{padding-left:14px;padding-right:14px}.name{font-size:13px}}@media(min-width:900px){.grid{grid-template-columns:repeat(5,minmax(0,1fr))}}@media(min-width:1200px){.grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header class="top"><div class="brand" id="brand">만화카페 도도 MENU</div><div class="sub" id="subtitle">메뉴 사진과 가격을 한눈에 확인하세요</div></header>
+<div class="sticky"><div class="search-wrap"><input id="search" type="search" placeholder="메뉴 검색" autocomplete="off"></div><nav class="categories" id="categories"></nav></div>
+<main class="content" id="content"><div class="loading">메뉴를 불러오는 중입니다.</div></main>
+<footer class="footer">메뉴 및 가격은 매장 사정에 따라 변경될 수 있습니다.</footer>
+<script src="config.js"></script>
+<script>
+let MENUS=[],CATEGORY_ORDER=[],selectedCategory="전체",query="";const categoriesEl=document.getElementById("categories"),contentEl=document.getElementById("content"),searchEl=document.getElementById("search"),cfg=window.DODO_MENU_CONFIG||{};document.getElementById("brand").textContent=(cfg.STORE_NAME||"만화카페 도도")+" MENU";document.getElementById("subtitle").textContent=cfg.SUBTITLE||"메뉴 사진과 가격을 한눈에 확인하세요";
+function parseCSV(text){
+  const rows=[];
+  let row=[], cell="", quoted=false;
+  text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  for(let i=0;i<text.length;i++){
+    const ch=text[i], next=text[i+1];
+    if(ch==='"'){
+      if(quoted && next==='"'){ cell+='"'; i++; }
+      else quoted=!quoted;
+    } else if(ch===',' && !quoted){
+      row.push(cell); cell="";
+    } else if(ch==='\n' && !quoted){
+      row.push(cell); cell="";
+      if(row.some(v=>v!=="")) rows.push(row);
+      row=[];
+    } else {
+      cell+=ch;
+    }
+  }
+  if(cell!=="" || row.length){ row.push(cell); rows.push(row); }
+  if(!rows.length) return [];
+  rows[0][0]=rows[0][0].replace(/^\uFEFF/,"");
+  const headers=rows[0].map(h=>h.trim());
+  return rows.slice(1).map(cols=>{
+    const obj={};
+    headers.forEach((h,i)=>obj[h]=(cols[i]??"").trim());
+    return obj;
+  });
+}
+function normalize(rows){return rows.map(r=>({name:r["메뉴명"]||"",price:Number(String(r["가격"]||"0").replace(/[^\d.-]/g,""))||0,category:r["카테고리"]||"기타",status:r["판매상태"]||"판매중",image:r["이미지파일명"]||"",description:r["설명"]||""})).filter(m=>m.name)}
+async function loadMenus(){let source=(cfg.SHEET_CSV_URL||"").trim();if(!source)source="menu-fallback.csv";try{const sep=source.includes("?")?"&":"?";const url=source.startsWith("http")?source+sep+"_="+Date.now():source;const res=await fetch(url,{cache:"no-store"});if(!res.ok)throw new Error("HTTP "+res.status);MENUS=normalize(parseCSV(await res.text()));CATEGORY_ORDER=[...new Set(MENUS.map(m=>m.category))];renderCategories();renderMenus()}catch(err){contentEl.innerHTML=`<div class="error">메뉴 데이터를 불러오지 못했습니다.<br>${String(err.message||err)}<br><br>config.js의 Google Sheets CSV 주소를 확인해 주세요.</div>`}}
+function money(n){return Number(n).toLocaleString("ko-KR")+"원"}function esc(s){return String(s).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]))}function visible(){return MENUS.filter(m=>{if((m.status||"판매중").trim()!=="판매중")return false;const ok=selectedCategory==="전체"||m.category===selectedCategory,q=query.trim().toLowerCase();return ok&&(!q||m.name.toLowerCase().includes(q)||m.category.toLowerCase().includes(q))})}
+function renderCategories(){const available=new Set(MENUS.filter(m=>(m.status||"판매중")==="판매중").map(m=>m.category)),cats=["전체",...CATEGORY_ORDER.filter(c=>available.has(c))];categoriesEl.innerHTML=cats.map(cat=>`<button class="cat-btn ${cat===selectedCategory?"active":""}" data-cat="${esc(cat)}">${esc(cat)}</button>`).join("");categoriesEl.querySelectorAll(".cat-btn").forEach(btn=>btn.addEventListener("click",()=>{selectedCategory=btn.dataset.cat;renderCategories();renderMenus();window.scrollTo({top:0,behavior:"smooth"})}))}
+function imgSrc(image){if(!image)return"";if(/^https?:\/\//i.test(image))return image;return"images/"+encodeURIComponent(image)}function card(m){const img=m.image?`<img src="${imgSrc(m.image)}" alt="${esc(m.name)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>이미지<br>준비중</div>'">`:`<div class="placeholder">이미지<br>준비중</div>`;return`<article class="card"><div class="image-box">${img}</div><div class="info"><div class="name">${esc(m.name)}</div><div class="price">${money(m.price)}</div></div></article>`}
+function renderMenus(){const rows=visible();if(!rows.length){contentEl.innerHTML='<div class="empty">표시할 메뉴가 없습니다.</div>';return}if(selectedCategory!=="전체"||query.trim()){contentEl.innerHTML=`<div class="grid">${rows.map(card).join("")}</div>`;return}const byCat=new Map();rows.forEach(m=>{if(!byCat.has(m.category))byCat.set(m.category,[]);byCat.get(m.category).push(m)});let out="";CATEGORY_ORDER.forEach(cat=>{const items=byCat.get(cat);if(items&&items.length)out+=`<section><h2 class="section-title">${esc(cat)}</h2><div class="grid">${items.map(card).join("")}</div></section>`});contentEl.innerHTML=out}
+searchEl.addEventListener("input",e=>{query=e.target.value;renderMenus()});loadMenus();
+</script></body></html>
